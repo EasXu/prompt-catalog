@@ -6,7 +6,7 @@
 
 | 版本 | 日期 | 变更内容 | 作者 |
 |------|------|----------|------|
-| 0.2.0 | 2025-07-22 | 新增 augment() 函数，基于 jieba 分词从自然语言中提取关键词并按数量随机抽取预制提示词拼接 | Easton |
+| 0.2.0 | 2025-07-22 | 新增 augment() 函数，基于 jieba 分词 + 语义同义词组 + 数量检测，从自然语言中智能匹配预制提示词 | Easton |
 | 0.1.0 | 2025-07-18 | 初始版本，包含 19 大类约 175 条障碍物提示词，支持指定类目组合和随机场景生成 | Easton |
 
 > 每次更新须在上述表格中追加一行，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
@@ -35,6 +35,7 @@ prompt_catalog/
     _data.py                    # 【唯一数据源】所有提示词 + 元数据
     _composer.py                # 组合引擎：分层模板、随机抽取、排除规则、dry-run
     _exclusions.py              # 互斥规则配置
+    _augment.py                 # 自然语言增强引擎：jieba分词 + 同义词组 + 三级索引 + 数量检测
   tools/
     generate_md.py              # 从 _data.py 反向生成 prompts.md
   tests/
@@ -50,7 +51,8 @@ prompt_catalog/
 prompt_catalog/_data.py        ← 无依赖（纯数据）
 prompt_catalog/_exclusions.py  ← 无依赖（纯配置）
 prompt_catalog/_composer.py    ← 依赖 _data.py, _exclusions.py
-prompt_catalog/__init__.py     ← 依赖 _composer.py, _data.py
+prompt_catalog/_augment.py     ← 依赖 _data.py, jieba（中文分词）
+prompt_catalog/__init__.py     ← 依赖 _composer.py, _augment.py, _data.py
 tools/generate_md.py           ← 依赖 _data.py
 prompts.md                     ← 由 generate_md.py 生成
 ```

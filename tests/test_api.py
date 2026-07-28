@@ -194,8 +194,43 @@ class TestAugment:
         """重复关键词应去重处理。"""
         result = augment("球和球和球")
         n = result.count("\n")
-        # "球" 出现多次但只应匹配一批
-        assert 1 <= n <= 9  # 默认 1 条，但也可能因分词变化
+        assert 1 <= n <= 9
+
+    # ---- 同义词语义匹配 ----
+
+    def test_synonym_child(self):
+        """'小孩'应通过同义词组匹配到儿童类。"""
+        result = augment("两个小孩在玩")
+        assert result.count("\n") >= 2  # "两个" → 2条
+
+    def test_synonym_fence(self):
+        """'围墙'应通过同义词组匹配到栅栏类。"""
+        result = augment("一些围墙")
+        n = result.count("\n")
+        assert 2 <= n <= 4  # "一些" → 2~4条
+
+    def test_synonym_dog(self):
+        """'狗狗'应通过同义词组匹配到宠物类。"""
+        result = augment("一只狗狗")
+        assert result.count("\n") == 1
+
+    def test_synonym_trash(self):
+        """'垃圾'应通过同义词组匹配到杂物类。"""
+        result = augment("一些垃圾")
+        n = result.count("\n")
+        assert 2 <= n <= 4
+
+    def test_location_filtered(self):
+        """位置词'草坪''庭院'不应触发匹配。"""
+        result = augment("草坪和庭院都很漂亮")
+        assert result == "草坪和庭院都很漂亮"
+
+    def test_complex_scene(self):
+        """综合场景：玩具+花盆+小孩+栅栏全匹配。"""
+        result = augment("两个玩具和一个花盆，两个小孩在玩，远处有栅栏")
+        n = result.count("\n")
+        # 期望：2玩具 + 1花盆 + 2儿童 + 2~4栅栏 = 7~9
+        assert n >= 5, f"复杂场景期望≥5条，实际{n}条"
 
 
 class TestRandomScene:

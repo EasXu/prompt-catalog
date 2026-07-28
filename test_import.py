@@ -57,7 +57,7 @@ print(f"  模板: {preview['template_name']}")
 print(f"  选中: {dict(preview['picks'])}")
 
 # 7. augment — 自然语言智能增强
-print("\n🧠 augment('草坪上有两个玩具和一个花盆'):")
+print("\n🧠 augment('草坪上有两个玩具和一个花盆，草地上有两个小孩正在玩玩耍，远处有一些栅栏围墙'):")
 result = augment("草坪上有两个玩具和一个花盆")
 print(f"  匹配到 {result.count(chr(10))} 条预制提示词")
 lines = result.split("\n")
@@ -65,7 +65,7 @@ for i, line in enumerate(lines):
     if i == 0:
         print(f"  原文: {line}")
     else:
-        print(f"  [{i}] {line[:70]}...")
+        print(line)
 
 print("\n" + "=" * 50)
 print("✅ 全部测试通过")
