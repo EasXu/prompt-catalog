@@ -92,6 +92,7 @@ prompt_catalog/
     _data.py                # 唯一数据源
     _composer.py            # 组合引擎
     _exclusions.py          # 互斥规则
+    _augment.py             # 自然语言增强引擎（jieba + 同义词组）
   tools/
     generate_md.py          # 从 _data.py 生成 prompts.md
   tests/
