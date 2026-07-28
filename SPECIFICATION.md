@@ -6,6 +6,7 @@
 
 | 版本 | 日期 | 变更内容 | 作者 |
 |------|------|----------|------|
+| 0.2.0 | 2025-07-22 | 新增 augment() 函数，基于 jieba 分词从自然语言中提取关键词并按数量随机抽取预制提示词拼接 | Easton |
 | 0.1.0 | 2025-07-18 | 初始版本，包含 19 大类约 175 条障碍物提示词，支持指定类目组合和随机场景生成 | Easton |
 
 > 每次更新须在上述表格中追加一行，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
@@ -58,7 +59,7 @@ prompts.md                     ← 由 generate_md.py 生成
 
 - Python ≥ 3.9
 - 标准库（`random`, `re`, `json` 等）
-- 无第三方依赖（保持轻量，方便嵌入）
+- [jieba](https://github.com/fxsjy/jieba) ≥ 0.42（中文分词，仅 augment() 需要）
 
 ---
 
@@ -150,7 +151,7 @@ pytest tests/test_data_integrity.py -v   # 只跑数据完整性
 | 文件 | 检查内容 | 何时必须通过 |
 |------|----------|-------------|
 | `test_data_integrity.py` | 无重复ID、无空prompt、必需字段完整、ID 格式正确 | 每次修改 `prompt_catalog/_data.py` 后 |
-| `test_api.py` | 6 个公开函数返回值类型、错误处理、dry_run 结构 | 修改 `prompt_catalog/__init__.py` 后 |
+| `test_api.py` | 7 个公开函数返回值类型、错误处理、dry_run 结构 | 修改 `prompt_catalog/__init__.py` 后 |
 | `test_composer.py` | 模板引用有效、排除规则触发、结构层 ≤1 个 | 修改 `prompt_catalog/_composer.py` 或 `prompt_catalog/_exclusions.py` 后 |
 
 **原则**：提交前跑一次全量测试，全部 PASSED 再交。
@@ -162,7 +163,7 @@ pytest tests/test_data_integrity.py -v   # 只跑数据完整性
 ### 6.1 导入
 
 ```python
-from prompt_catalog import compose, random_scene, search, list_categories, list_items, version
+from prompt_catalog import augment, compose, random_scene, search, list_categories, list_items, version
 ```
 
 ### 6.2 公开 API
@@ -230,13 +231,29 @@ from prompt_catalog import compose, random_scene, search, list_categories, list_
 [{"id": "TY01", "name": "足球", "tags": ["球类", "运动"]}, ...]
 ```
 
+#### `augment(user_prompt: str) -> str`
+
+从用户输入的自然语言文本中提取物体关键词，按数量随机抽取预制提示词拼接到原文后。
+
+- **参数**：`user_prompt` — 自然语言描述，如 `"草坪上有个足球和三个花盆"`
+- **返回**：原文 + 换行 + 匹配到的预制提示词；无匹配则原样返回
+- **匹配策略**：jieba 分词 → 三级索引匹配（精确名称 > 标签 > 分词名词），支持数量检测（"三个球"→3条，"几个花盆"→2~4条）
+- **依赖**：需要 `jieba` 分词库
+
+```python
+>>> augment("三个球")
+"三个球\n标准黑白五边形图案足球...\n橙色篮球...\n黄绿色毛绒网球..."
+>>> augment("空无一物")
+"空无一物"
+```
+
 #### `version() -> str`
 
 返回包版本号。
 
 ```python
 >>> version()
-"0.1.0"
+"0.2.0"
 ```
 
 ### 6.3 调试日志

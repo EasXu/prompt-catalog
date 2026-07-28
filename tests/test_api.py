@@ -6,6 +6,7 @@ API 功能测试
 
 import pytest
 from prompt_catalog import (
+    augment,
     compose,
     random_scene,
     search,
@@ -122,6 +123,47 @@ class TestCompose:
             result = compose([cat_key])
             assert isinstance(result, str)
             assert len(result) > 0
+
+
+class TestAugment:
+    """augment 测试 — jieba 分词 + 数量检测 + 随机抽取。"""
+
+    def test_exact_name_match(self):
+        """精确名称匹配：'足球'应精准命中 TY01。"""
+        result = augment("草坪上有个足球")
+        assert "足球" in result
+        assert result.count("\n") == 1  # 仅 1 条匹配
+
+    def test_quantity_parsing(self):
+        """数量检测：'三个球'应返回 3 条球类提示词。"""
+        result = augment("三个球")
+        assert result.count("\n") == 3
+
+    def test_tag_match_with_quantity(self):
+        """标签匹配 + 数量：'两个玩具'应返回 2 条。"""
+        result = augment("两个玩具")
+        assert result.count("\n") == 2
+
+    def test_fuzzy_quantity(self):
+        """模糊数量：'几个花盆'应返回 2~4 条。"""
+        result = augment("几个花盆")
+        n = result.count("\n")
+        assert 2 <= n <= 4, f"期望 2~4 条，实际 {n} 条"
+
+    def test_no_match_returns_original(self):
+        """无匹配时原样返回，不含换行。"""
+        result = augment("xyz不存在的物品abc123")
+        assert result == "xyz不存在的物品abc123"
+
+    def test_returns_string(self):
+        """返回值类型检查。"""
+        assert isinstance(augment("测试"), str)
+
+    def test_multiple_keywords(self):
+        """多关键词：秋千和滑梯各匹配。"""
+        result = augment("秋千和滑梯")
+        # 至少匹配到秋千和滑梯（可能还有额外误匹配，但 ≥2）
+        assert result.count("\n") >= 2
 
 
 class TestRandomScene:

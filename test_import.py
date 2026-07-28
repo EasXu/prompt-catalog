@@ -11,6 +11,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from prompt_catalog import (
+    augment,
     compose,
     random_scene,
     search,
@@ -54,6 +55,17 @@ print("\n🔬 random_scene(dry_run=True):")
 preview = random_scene(dry_run=True)
 print(f"  模板: {preview['template_name']}")
 print(f"  选中: {dict(preview['picks'])}")
+
+# 7. augment — 自然语言智能增强
+print("\n🧠 augment('草坪上有两个玩具和一个花盆'):")
+result = augment("草坪上有两个玩具和一个花盆")
+print(f"  匹配到 {result.count(chr(10))} 条预制提示词")
+lines = result.split("\n")
+for i, line in enumerate(lines):
+    if i == 0:
+        print(f"  原文: {line}")
+    else:
+        print(f"  [{i}] {line[:70]}...")
 
 print("\n" + "=" * 50)
 print("✅ 全部测试通过")

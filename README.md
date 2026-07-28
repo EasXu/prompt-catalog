@@ -6,14 +6,19 @@
 
 ```bash
 pip install -e .        # 开发模式安装
+pip install jieba       # augment() 需要 jieba 中文分词
 ```
 
-无第三方依赖，仅需 Python ≥ 3.9。
+依赖：Python ≥ 3.9 + [jieba](https://github.com/fxsjy/jieba)（中文分词）。
 
 ## 快速开始
 
 ```python
-from prompt_catalog import compose, random_scene, search
+from prompt_catalog import augment, compose, random_scene, search
+
+# 智能增强：从自然语言中提取物体关键词，按数量随机抽取预制提示词拼接
+result = augment("草坪上有个足球和两个花盆")
+print(result)
 
 # 指定类目随机抽取
 prompt = compose(["toys", "clutter", "potted_plants"])
@@ -33,6 +38,7 @@ for r in results:
 
 | 函数 | 说明 |
 |------|------|
+| `augment(user_prompt)` | 从自然语言中提取关键词，按数量随机抽取预制提示词拼接到原文后 |
 | `compose(categories)` | 从指定大类中各随机取一条，拼接返回 |
 | `random_scene(dry_run=False)` | 随机生成一组自然合理的障碍物组合 |
 | `search(keyword)` | 模糊搜索提示词 |
@@ -62,7 +68,7 @@ pytest tests/ -v            # 跑全部自动化测试
 | 文件 | 检查内容 |
 |------|----------|
 | `test_data_integrity.py` | 数据有没有毛病（重复ID、空prompt、缺失字段） |
-| `test_api.py` | 6 个公开函数行为对不对（返回值类型、错误处理） |
+| `test_api.py` | 7 个公开函数行为对不对（返回值类型、错误处理） |
 | `test_composer.py` | 随机组合逻辑是否正常（模板有效、排除规则触发、结构层不超限） |
 
 提交改动前跑一次，全绿再交。
