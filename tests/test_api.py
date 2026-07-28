@@ -162,8 +162,40 @@ class TestAugment:
     def test_multiple_keywords(self):
         """多关键词：秋千和滑梯各匹配。"""
         result = augment("秋千和滑梯")
-        # 至少匹配到秋千和滑梯（可能还有额外误匹配，但 ≥2）
         assert result.count("\n") >= 2
+
+    # ---- 鲁棒性边界测试 ----
+
+    def test_negation_skips_match(self):
+        """否定检测：'没有足球'不应匹配足球。"""
+        assert augment("没有足球") == "没有足球"
+        assert augment("不是花盆") == "不是花盆"
+        assert augment("这里没球") == "这里没球"
+
+    def test_empty_input(self):
+        """空白输入：空字符串和纯空白直接返回。"""
+        assert augment("") == ""
+        assert augment("   ") == "   "
+
+    def test_large_quantity_clamped(self):
+        """大数量封顶：'一百个球'不超过实际候选数。"""
+        result = augment("一百个球")
+        n = result.count("\n")
+        # 球类共 9 条，即使要 100 条也应 ≤ 9
+        assert 1 <= n <= 9, f"一百个球应 ≤9 条，实际 {n}"
+
+    def test_many_quantity(self):
+        """'很多'数量词应返回 3~6 条。"""
+        result = augment("很多玩具")
+        n = result.count("\n")
+        assert 3 <= n <= 6, f"很多玩具期望 3~6 条，实际 {n}"
+
+    def test_repeated_keyword(self):
+        """重复关键词应去重处理。"""
+        result = augment("球和球和球")
+        n = result.count("\n")
+        # "球" 出现多次但只应匹配一批
+        assert 1 <= n <= 9  # 默认 1 条，但也可能因分词变化
 
 
 class TestRandomScene:

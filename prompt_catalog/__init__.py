@@ -128,9 +128,12 @@ def _resolve_quantity(tokens: list[str], match_pos: int) -> int | None:
         if prev.isdigit():
             return int(prev)
 
-        # "几个", "一些", "多个", "若干" → 模糊数量
+        # "几个", "一些", "多个", "若干" → 模糊数量 (2~4)
+        # "很多", "大量" → 更多 (3~6)
         if prev in ("几个", "一些", "多个", "若干"):
             return None
+        if prev in ("很多", "大量", "好多", "不少"):
+            return -1  # 负值标记"很多"，_pick_items 中展开为 3~6
 
         # "一个", "两个" 等合并为一个 token 的情况
         if len(prev) >= 2:
@@ -167,9 +170,13 @@ def _pick_items(
     if not available:
         return
 
+    # 数量解析
     if qty is None:
-        qty = random.randint(2, 4)
+        qty = random.randint(2, 4)   # "几个"/"一些" → 2~4
+    elif qty == -1:
+        qty = random.randint(3, 6)   # "很多"/"大量" → 3~6
 
+    # 封顶保护：数量不能超过候选数
     n = min(qty, len(available))
     picked = random.sample(available, n)
 
@@ -178,15 +185,63 @@ def _pick_items(
         results.append((position, cat_key, item_id))
 
 
+# 否定词集合——关键词前 3 token 内出现则跳过匹配
+_NEG_WORDS: set[str] = {"不", "没", "没有", "非", "无", "别", "不是", "不要", "不会"}
+
+
+def _is_negated(tokens: list[str], match_pos: int) -> bool:
+    """检查匹配位置前 3 个 token 内是否包含否定词。"""
+    start = max(0, match_pos - 3)
+    for i in range(start, match_pos):
+        if tokens[i] in _NEG_WORDS:
+            return True
+    return False
+
+
+def _fallback_match(user_prompt: str) -> str:
+    """jieba 不可用时的降级方案：简易子串匹配（仅匹配 2 字以上 tag）。"""
+    raw_matches: list[tuple[int, str, str]] = []
+    seen_ids: set[str] = set()
+
+    for cat_key, cat in PROMPTS.items():
+        for item_id, item in cat["items"].items():
+            if item_id in seen_ids:
+                continue
+            name = item.get("name", "")
+            tags = item.get("tags", [])
+
+            # 仅匹配 2 字以上 tag（比全名匹配更保守）
+            for tag in tags:
+                if len(tag) < 2:
+                    continue
+                pos = user_prompt.find(tag)
+                if pos != -1:
+                    seen_ids.add(item_id)
+                    raw_matches.append((pos, cat_key, item_id))
+                    break
+
+    raw_matches.sort(key=lambda m: m[0])
+    if not raw_matches:
+        return user_prompt
+
+    lines = [user_prompt]
+    for _, cat_key, item_id in raw_matches:
+        item = PROMPTS[cat_key]["items"].get(item_id)
+        if item:
+            lines.append(item["prompt"])
+    return "\n".join(lines)
+
+
 def augment(user_prompt: str) -> str:
     """从用户自然语言提示词中提取物体关键词，按数量随机抽取预制提示词并拼接。
 
     算法：
-    1. 用 jieba 分词，提取名词
-    2. 对每个名词查关键词索引（名称 → 标签 两级）
-    3. 回溯检测数量词（"三个球"→3条、"一个花盆"→1条、"几个玩具"→随机2~4条）
-    4. 从匹配候选中随机抽取指定数量
-    5. 按原文位置排序拼接返回
+    1. 输入校验（空/纯空白直接返回）
+    2. jieba 分词提取名词（不可用时降级为简易子串匹配）
+    3. 否定检测（"没有足球"→跳过）
+    4. 三级索引匹配（名称 → 标签 → 分词）
+    5. 数量检测（"三个球"→3条、"很多玩具"→3~6条）
+    6. 随机抽取 + 去重 + 按位置排序拼接
 
     Args:
         user_prompt: 用户输入的自然语言提示词
@@ -194,71 +249,87 @@ def augment(user_prompt: str) -> str:
     Returns:
         原始文本 + 换行 + 匹配到的预制提示词（数量由原文决定）
         若无任何匹配，原样返回
+        发生任何意外异常也原样返回（鲁棒降级）
 
     Example:
         >>> augment("草坪上有个足球")
         "草坪上有个足球\\n标准黑白五边形图案足球，表面有草渍和泥土污痕..."
         >>> augment("三个球")
         "三个球\\n<随机3条球类提示词>"
-        >>> augment("空无一物")
-        "空无一物"
+        >>> augment("没有足球")  # 否定 → 不匹配
+        "没有足球"
     """
+    # ---- 输入校验 ----
+    if not user_prompt or not user_prompt.strip():
+        return user_prompt or ""
+
     try:
-        import jieba.posseg as pseg
-    except ImportError:
-        raise ImportError(
-            "augment() 需要 jieba 分词库，请执行: pip install jieba"
-        )
+        # ---- 尝试 jieba 分词 ----
+        try:
+            import jieba.posseg as pseg
+            _use_jieba = True
+        except ImportError:
+            _use_jieba = False
 
-    # 1. 分词 + 词性标注
-    words = list(pseg.cut(user_prompt))
-    tokens = [w.word for w in words]
+        if not _use_jieba:
+            return _fallback_match(user_prompt)
 
-    # 2. 扫描匹配
-    raw_matches: list[tuple[int, str, str]] = []  # (pos, cat_key, item_id)
-    seen_ids: set[str] = set()
+        # ---- 分词 + 词性标注 ----
+        words = list(pseg.cut(user_prompt))
+        tokens = [w.word for w in words]
 
-    for pos, (word, flag) in enumerate(words):
-        # 匹配名词类 token（n* = 名词/人名/地名/专名）
-        if not (flag.startswith("n") or flag in ("eng", "x")):
-            continue
+        # ---- 扫描匹配 ----
+        raw_matches: list[tuple[int, str, str]] = []  # (pos, cat_key, item_id)
+        seen_ids: set[str] = set()
 
-        # 合并所有匹配层级的候选项（名称 > 标签 > 分词）
-        candidates: list[tuple[str, str]] = []
-        if word in _NAME_INDEX:
-            candidates = list(_NAME_INDEX[word])
-        else:
-            if word in _TAG_INDEX:
-                candidates.extend(_TAG_INDEX[word])
-            if word in _TOKEN_INDEX:
-                candidates.extend(_TOKEN_INDEX[word])
-            # 去重（同一 item 可能在 tag 和 token 两层都被索引到）
-            seen_in_word: set[str] = set()
-            unique: list[tuple[str, str]] = []
-            for c in candidates:
-                if c[1] not in seen_in_word:
-                    seen_in_word.add(c[1])
-                    unique.append(c)
-            candidates = unique
+        for pos, (word, flag) in enumerate(words):
+            # 匹配名词类 token（n* = 名词/人名/地名/专名）
+            if not (flag.startswith("n") or flag in ("eng", "x")):
+                continue
 
-        if candidates:
-            qty = _resolve_quantity(tokens, pos)
-            _pick_items(candidates, qty, seen_ids, raw_matches, pos)
+            # 否定检测
+            if _is_negated(tokens, pos):
+                continue
 
-    # 3. 按原文位置排序
-    raw_matches.sort(key=lambda m: m[0])
+            # 合并所有匹配层级的候选项（名称 > 标签 > 分词）
+            candidates: list[tuple[str, str]] = []
+            if word in _NAME_INDEX:
+                candidates = list(_NAME_INDEX[word])
+            else:
+                if word in _TAG_INDEX:
+                    candidates.extend(_TAG_INDEX[word])
+                if word in _TOKEN_INDEX:
+                    candidates.extend(_TOKEN_INDEX[word])
+                # 去重
+                seen_in_word: set[str] = set()
+                unique: list[tuple[str, str]] = []
+                for c in candidates:
+                    if c[1] not in seen_in_word:
+                        seen_in_word.add(c[1])
+                        unique.append(c)
+                candidates = unique
 
-    if not raw_matches:
+            if candidates:
+                qty = _resolve_quantity(tokens, pos)
+                _pick_items(candidates, qty, seen_ids, raw_matches, pos)
+
+        # ---- 排序拼接 ----
+        raw_matches.sort(key=lambda m: m[0])
+
+        if not raw_matches:
+            return user_prompt
+
+        prompt_lines = [user_prompt]
+        for _, cat_key, item_id in raw_matches:
+            item = PROMPTS[cat_key]["items"].get(item_id)
+            if item:
+                prompt_lines.append(item["prompt"])
+
+        return "\n".join(prompt_lines)
+
+    except Exception:
+        # 全局保护：任何意外异常都降级返回原文
         return user_prompt
-
-    # 4. 拼接
-    prompt_lines = [user_prompt]
-    for _, cat_key, item_id in raw_matches:
-        item = PROMPTS[cat_key]["items"].get(item_id)
-        if item:
-            prompt_lines.append(item["prompt"])
-
-    return "\n".join(prompt_lines)
 
 
 # ============================================================
